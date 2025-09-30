@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block page_title %}Storage Space{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <p class="text-muted mb-0">Monitor available space across all storage nodes</p>
+    </div>
+    <div>
+        <button class="btn btn-outline-secondary" onclick="refreshBrokerStatus()">
+            <i class="fas fa-sync-alt me-1"></i>Refresh Status
+        </button>
+    </div>
+</div>
+
+<div id="storageCards" class="row">
+    <div class="col-12 text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading storage information...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    if (bytes === Infinity) return '∞';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function getProgressBarClass(percentage) {
+    if (percentage < 50) return 'bg-success';
+    if (percentage < 80) return 'bg-warning';
+    return 'bg-danger';
+}
+
+function loadStorageInfo() {
+    fetch('/storage_info')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('storageCards');
+            
+            if (data.length === 0) {
+                container.innerHTML = `
+                    <div class="col-12 text-center">
+                        <i class="fas fa-server fa-4x text-muted mb-3"></i>
+                        <h5>No Storage Brokers</h5>
+                        <p class="text-muted">Add storage brokers to monitor space usage</p>
+                        <a href="/manage" class="btn btn-primary">Add Brokers</a>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            let totalSpace = 0;
+            let totalUsed = 0;
+            let hasFiniteStorage = false;
+            
+            data.forEach(broker => {
+                if (broker.error) {
+                    html += `
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="card h-100 border-danger">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h5 class="card-title mb-0">${broker.name}</h5>
+                                        <span class="badge bg-secondary">${broker.type}</span>
+                                    </div>
+                                    <div class="alert alert-danger mb-0">
+                                        <i class="fas fa-exclamation-triangle me-2"></i>
+                                        Error: ${broker.error}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const isInfinite = broker.total === Infinity || broker.available === Infinity;
+                const percentage = isInfinite ? 0 : ((broker.actual_used || 0) / broker.total) * 100;
+                
+                if (!isInfinite) {
+                    totalSpace += broker.total;
+                    totalUsed += broker.actual_used || 0;
+                    hasFiniteStorage = true;
+                }
+                
+                html += `
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h5 class="card-title mb-0">${broker.name}</h5>
+                                    <span class="badge bg-primary">${broker.type}</span>
+                                </div>
+                                
+                                ${isInfinite ? `
+                                    <div class="text-center mb-3">
+                                        <i class="fas fa-infinity fa-2x text-success mb-2"></i>
+                                        <p class="mb-0">Unlimited Storage</p>
+                                    </div>
+                                ` : `
+                                    <div class="progress mb-3" style="height: 20px;">
+                                        <div class="progress-bar ${getProgressBarClass(percentage)}" 
+                                             style="width: ${percentage}%">
+                                            ${percentage.toFixed(1)}%
+                                        </div>
+                                    </div>
+                                `}
+                                
+                                <div class="row text-center">
+                                    <div class="col-3">
+                                        <small class="text-muted">Virtual Used</small>
+                                        <div class="fw-bold text-info">${formatBytes(broker.virtual_used || 0)}</div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Actual Used</small>
+                                        <div class="fw-bold text-primary">${formatBytes(broker.actual_used || 0)}</div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Available</small>
+                                        <div class="fw-bold text-success">${formatBytes(broker.available)}</div>
+                                    </div>
+                                    <div class="col-3">
+                                        <small class="text-muted">Total</small>
+                                        <div class="fw-bold">${formatBytes(broker.total)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            // Add summary card if there's finite storage
+            if (hasFiniteStorage) {
+                const totalPercentage = (totalUsed / totalSpace) * 100;
+                html = `
+                    <div class="col-12 mb-4">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-chart-pie me-2"></i>
+                                    Total Storage Summary
+                                </h5>
+                                <div class="progress mb-3" style="height: 25px;">
+                                    <div class="progress-bar ${getProgressBarClass(totalPercentage)}" 
+                                         style="width: ${totalPercentage}%">
+                                        ${totalPercentage.toFixed(1)}% Used
+                                    </div>
+                                </div>
+                                <div class="row text-center">
+                                    <div class="col-md-3">
+                                        <small class="text-muted">Total Used</small>
+                                        <div class="h5 mb-0">${formatBytes(totalUsed)}</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small class="text-muted">Total Available</small>
+                                        <div class="h5 mb-0 text-success">${formatBytes(totalSpace - totalUsed)}</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small class="text-muted">Total Capacity</small>
+                                        <div class="h5 mb-0">${formatBytes(totalSpace)}</div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <small class="text-muted">Active Nodes</small>
+                                        <div class="h5 mb-0">${data.filter(b => !b.error).length}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ` + html;
+            }
+            
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading storage info:', error);
+            document.getElementById('storageCards').innerHTML = `
+                <div class="col-12">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Failed to load storage information
+                    </div>
+                </div>
+            `;
+        });
+}
+
+function refreshBrokerStatus() {
+    fetch('/admin/refresh_brokers', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            // Reload storage info after refresh
+            setTimeout(() => loadStorageInfo(), 1000);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error refreshing broker status:', error);
+    });
+}
+
+// Auto-refresh every 30 seconds
+setInterval(loadStorageInfo, 30000);
+
+// Initial load
+loadStorageInfo();
+</script>
+{% endblock %}

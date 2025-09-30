@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block page_title %}User Files{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="/admin" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Back to Admin
+        </a>
+    </div>
+    <div>
+        <button class="btn btn-outline-secondary" onclick="loadFiles()">
+            <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">User Files</h5>
+    </div>
+    <div class="card-body">
+        <div id="filesTable">Loading files...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadFiles() {
+    const userId = window.location.pathname.split('/').pop();
+    
+    fetch(`/admin/user_files/${userId}`)
+        .then(response => response.json())
+        .then(files => {
+            let html = '<div class="table-responsive">' +
+                      '<table class="table table-hover">' +
+                      '<thead><tr>' +
+                      '<th>Filename</th>' +
+                      '<th>Virtual Path</th>' +
+                      '<th>Size</th>' +
+                      '<th>Created</th>' +
+                      '<th>Brokers</th>' +
+                      '<th>Storage Paths</th>' +
+                      '<th>Actions</th>' +
+                      '</tr></thead><tbody>';
+            
+            files.forEach(file => {
+                html += `<tr>
+                    <td><strong>${file.filename}</strong></td>
+                    <td><code>${file.virtual_path}</code></td>
+                    <td>${formatBytes(file.size)}</td>
+                    <td>${file.created_at || 'N/A'}</td>
+                    <td><span class="badge bg-info">${file.brokers}</span></td>
+                    <td><code class="small">${file.storage_paths}</code></td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="deleteFile('${file.filename}', '${file.virtual_path}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            document.getElementById('filesTable').innerHTML = html;
+        })
+        .catch(error => {
+            document.getElementById('filesTable').innerHTML = '<div class="alert alert-danger">Failed to load files</div>';
+        });
+}
+
+function deleteFile(filename, virtualPath) {
+    if (confirm(`Delete file "${filename}"?`)) {
+        const userId = window.location.pathname.split('/').pop();
+        fetch('/admin/delete_file', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                filename: filename,
+                virtual_path: virtualPath,
+                user_id: userId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                loadFiles();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+loadFiles();
+</script>
+{% endblock %}

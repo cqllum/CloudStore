@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ site_name }} - {{ site_description }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: {{ primary_color }};
+            --secondary-color: #64748b;
+            --sidebar-bg: {{ sidebar_bg }};
+            --sidebar-text: {{ sidebar_text }};
+            --sidebar-hover: #334155;
+            --content-bg: {{ background_color }};
+            --card-bg: {{ card_bg }};
+            --card-text: {{ card_text }};
+        }
+        body { 
+            background: var(--content-bg);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--card-text);
+        }
+        .sidebar {
+            background: var(--sidebar-bg);
+            min-height: 100vh;
+            width: 260px;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+        .sidebar .nav-link {
+            color: var(--sidebar-text);
+            padding: 12px 20px;
+            margin: 4px 12px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+        }
+        .sidebar .nav-link:hover {
+            background: var(--sidebar-hover);
+            color: white;
+        }
+        .sidebar .nav-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        .sidebar .nav-link i {
+            width: 20px;
+            margin-right: 12px;
+        }
+        .main-content {
+            margin-left: 260px;
+            min-height: 100vh;
+        }
+        .top-bar {
+            background: var(--card-bg);
+            border-bottom: 1px solid #e2e8f0;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            color: var(--card-text);
+        }
+        .content-area {
+            padding: 24px;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            background: var(--card-bg);
+            color: var(--card-text);
+        }
+        .btn {
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        .btn-primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        .sidebar-brand {
+            padding: 20px;
+            border-bottom: 1px solid #334155;
+            color: white;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        {{ custom_css|safe }}
+    </style>
+</head>
+<body>
+    {% if session.user_id %}
+        <div class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fas fa-cloud me-2"></i>
+                {{ site_name }}
+            </div>
+            <nav class="nav flex-column mt-3">
+                <a class="nav-link {{ 'active' if request.endpoint == 'dashboard' }}" href="/dashboard">
+                    <i class="fas fa-folder"></i>My Files
+                </a>
+                {% if session.get('is_admin') %}
+                <div class="mt-3 mb-2">
+                    <small class="text-muted px-3">ADMIN</small>
+                </div>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin_page' }}" href="/admin">
+                    <i class="fas fa-users-cog"></i>User Management
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'browse_page' }}" href="/browse">
+                    <i class="fas fa-cloud"></i>Storage Browser
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'manage_page' }}" href="/manage">
+                    <i class="fas fa-server"></i>Storage Brokers
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'storage_space_page' }}" href="/storage_space">
+                    <i class="fas fa-chart-pie"></i>Storage Space
+                </a>
+                <a class="nav-link {{ 'active' if request.endpoint == 'admin_settings_page' }}" href="/admin/settings_page">
+                    <i class="fas fa-cog"></i>Settings
+                </a>
+                {% endif %}
+            </nav>
+            <div class="mt-auto p-3">
+                <div class="mb-3" id="storageUsage">
+                    <small class="text-muted px-3">STORAGE</small>
+                    <div class="px-3 mt-2">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar" id="storageBar" style="width: 0%"></div>
+                        </div>
+                        <small class="text-muted" id="storageText">Loading...</small>
+                    </div>
+                </div>
+                <a class="nav-link" href="/logout">
+                    <i class="fas fa-sign-out-alt"></i>Logout
+                </a>
+            </div>
+        </div>
+        <div class="main-content">
+            <div class="top-bar">
+                <div class="d-flex justify-content-between align-items-center w-100">
+                    <h5 class="mb-0">{% block page_title %}Dashboard{% endblock %}</h5>
+                    <span class="text-muted">Welcome, {{ session.username }}!</span>
+                </div>
+            </div>
+            <div class="content-area">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    {% else %}
+        <div class="d-flex align-items-center justify-content-center min-vh-100">
+            <div class="text-center">
+                <div class="mb-4">
+                    <i class="fas fa-cloud fa-4x text-primary mb-3"></i>
+                    <h2>{{ site_name }}</h2>
+                    <p class="text-muted">{{ site_description }}</p>
+                </div>
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-info">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                {% block login_content %}{% endblock %}
+            </div>
+        </div>
+    {% endif %}
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% if session.user_id %}
+    <script>
+    function loadStorageUsage() {
+        fetch('/storage_usage')
+            .then(response => response.json())
+            .then(data => {
+                const percentage = Math.min(data.percentage, 100);
+                const used = formatBytes(data.used);
+                const limit = formatBytes(data.limit);
+                
+                document.getElementById('storageBar').style.width = percentage + '%';
+                document.getElementById('storageBar').className = 'progress-bar ' + 
+                    (percentage > 90 ? 'bg-danger' : percentage > 75 ? 'bg-warning' : 'bg-success');
+                document.getElementById('storageText').textContent = used + ' / ' + limit;
+            })
+            .catch(() => {
+                document.getElementById('storageText').textContent = 'Error loading';
+            });
+    }
+    
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+    
+    loadStorageUsage();
+    </script>
+    {% endif %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

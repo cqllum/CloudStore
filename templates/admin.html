@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block page_title %}Admin Panel{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <p class="text-muted mb-0">Manage users and system settings</p>
+    </div>
+    <div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
+            <i class="fas fa-user-plus me-1"></i>Create User
+        </button>
+        <button class="btn btn-outline-secondary" onclick="loadUsers()">
+            <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">User Management</h5>
+    </div>
+    <div class="card-body">
+        <div id="usersTable">Loading users...</div>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal fade" id="createUserModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5>Create New User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createUserForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" name="password" required>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="is_admin" id="isAdmin">
+                        <label class="form-check-label" for="isAdmin">
+                            Administrator privileges
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5>Edit User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editUserForm">
+                <div class="modal-body">
+                    <input type="hidden" id="editUserId">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" id="editUsername" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password (leave blank to keep current)</label>
+                        <input type="password" class="form-control" id="editPassword">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="editIsAdmin">
+                        <label class="form-check-label" for="editIsAdmin">
+                            Administrator privileges
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Update User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadUsers() {
+    fetch('/admin/users')
+        .then(response => response.json())
+        .then(users => {
+            let html = '<div class="table-responsive">' +
+                      '<table class="table table-hover">' +
+                      '<thead><tr>' +
+                      '<th>Username</th>' +
+                      '<th>Role</th>' +
+                      '<th>Files</th>' +
+                      '<th>Storage Used</th>' +
+                      '<th>Created</th>' +
+                      '<th>Actions</th>' +
+                      '</tr></thead><tbody>';
+            
+            users.forEach(user => {
+                html += `<tr>
+                    <td><strong>${user.username}</strong></td>
+                    <td><span class="badge ${user.is_admin ? 'bg-danger' : 'bg-secondary'}">${user.is_admin ? 'Admin' : 'User'}</span></td>
+                    <td>${user.file_count}</td>
+                    <td>${formatBytes(user.total_size)}</td>
+                    <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary me-1" onclick="editUser(${user.id})">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <a href="/admin/user_files_view/${user.id}" class="btn btn-sm btn-info me-1">
+                            <i class="fas fa-files-o"></i> Files
+                        </a>
+                        ${!user.is_admin ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id}, '${user.username}')">
+                            <i class="fas fa-trash"></i>
+                        </button>` : '<span class="text-muted">Protected</span>'}
+                    </td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            document.getElementById('usersTable').innerHTML = html;
+        })
+        .catch(error => {
+            document.getElementById('usersTable').innerHTML = '<div class="alert alert-danger">Failed to load users</div>';
+        });
+}
+
+function deleteUser(userId, username) {
+    if (confirm(`Delete user "${username}" and all their files?`)) {
+        fetch(`/admin/delete_user/${userId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                loadUsers();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function editUser(userId) {
+    fetch(`/admin/edit_user/${userId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            document.getElementById('editUserId').value = userId;
+            document.getElementById('editUsername').value = data.username;
+            document.getElementById('editPassword').value = '';
+            document.getElementById('editIsAdmin').checked = data.is_admin;
+            new bootstrap.Modal(document.getElementById('editUserModal')).show();
+        });
+}
+
+document.getElementById('createUserForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    
+    fetch('/admin/create_user', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            username: formData.get('username'),
+            password: formData.get('password'),
+            is_admin: formData.has('is_admin')
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            loadUsers();
+            bootstrap.Modal.getInstance(document.getElementById('createUserModal')).hide();
+            this.reset();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+});
+
+document.getElementById('editUserForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const userId = document.getElementById('editUserId').value;
+    const username = document.getElementById('editUsername').value;
+    const password = document.getElementById('editPassword').value;
+    const isAdmin = document.getElementById('editIsAdmin').checked;
+    
+    const data = {
+        username: username,
+        is_admin: isAdmin
+    };
+    
+    if (password) {
+        data.password = password;
+    }
+    
+    fetch(`/admin/edit_user/${userId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            loadUsers();
+            bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+});
+
+loadUsers();
+</script>
+{% endblock %}

@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+
+{% block page_title %}Storage Brokers{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <p class="text-muted mb-0">Manage your storage providers and backends</p>
+    </div>
+    <div>
+        <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#brokerModal">
+            <i class="fas fa-plus me-1"></i>Add Broker
+        </button>
+        <button class="btn btn-outline-secondary" onclick="loadBrokers()">
+            <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+    </div>
+</div>
+
+<div id="brokersContent">
+    <div class="d-flex justify-content-center p-5">
+        <div class="spinner-border" role="status"></div>
+    </div>
+</div>
+
+<!-- Add Broker Modal -->
+<div class="modal fade" id="brokerModal">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Storage Broker</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="brokerForm">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Broker Name</label>
+                                <input type="text" class="form-control" name="name" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Storage Type</label>
+                                <select class="form-control" name="type" onchange="updateConfigExample(this.value)">
+                                    <option value="local">Local Storage</option>
+                                    <option value="s3">AWS S3</option>
+                                    <option value="gcp">Google Cloud Storage</option>
+                                    <option value="mega">Mega.io</option>
+                                    <option value="dropbox">Dropbox</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Configuration (JSON)</label>
+                        <textarea class="form-control" name="config" id="configTextarea" rows="4" required></textarea>
+                        <div class="form-text">
+                            <div id="configExample"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Broker</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Broker Modal -->
+<div class="modal fade" id="editBrokerModal">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Storage Broker</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editBrokerForm">
+                <div class="modal-body">
+                    <input type="hidden" id="editBrokerId">
+                    <div class="mb-3">
+                        <label class="form-label">Broker Name</label>
+                        <input type="text" class="form-control" id="editBrokerName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Storage Type</label>
+                        <input type="text" class="form-control" id="editBrokerType" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Configuration (JSON)</label>
+                        <textarea class="form-control" id="editBrokerConfig" rows="4" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Broker</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadBrokers() {
+    // Get broker status from database
+    fetch('/broker_status')
+        .then(response => response.json())
+        .then(statusData => {
+            fetch('/brokers')
+                .then(response => response.json())
+                .then(brokers => {
+                    if (brokers.length === 0) {
+                        document.getElementById('brokersContent').innerHTML = `
+                            <div class="text-center p-5">
+                                <i class="fas fa-server fa-4x text-muted mb-3"></i>
+                                <h5>No Storage Brokers</h5>
+                                <p class="text-muted">Add your first storage broker to get started</p>
+                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#brokerModal">
+                                    <i class="fas fa-plus me-1"></i>Add Broker
+                                </button>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    let html = '<div class="row g-4">';
+                    brokers.forEach(broker => {
+                        const typeIcon = getTypeIcon(broker.type);
+                        const isActive = statusData[broker.id];
+                        const statusBadge = isActive ? 
+                            '<span class="badge bg-success">Active</span>' : 
+                            '<span class="badge bg-danger">Inactive</span>';
+                        
+                        html += `<div class="col-md-6 col-lg-4">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                                <div>
+                                                    <i class="${typeIcon} fa-2x text-primary mb-2"></i>
+                                                    <h5 class="card-title mb-1">${broker.name}</h5>
+                                                    <span class="badge bg-secondary">${broker.type.toUpperCase()}</span>
+                                                </div>
+                                                ${statusBadge}
+                                            </div>
+                                            <div class="d-flex gap-2">
+                                                <button class="btn btn-outline-primary btn-sm" onclick="browseBroker(${broker.id}, '${broker.name}')">
+                                                    <i class="fas fa-folder-open me-1"></i>Browse
+                                                </button>
+                                                <button class="btn btn-outline-secondary btn-sm" onclick="editBroker(${broker.id})">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger btn-sm" onclick="removeBroker(${broker.id}, '${broker.name}')">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                 </div>`;
+                    });
+                    html += '</div>';
+                    document.getElementById('brokersContent').innerHTML = html;
+                });
+        });
+}
+
+function getTypeIcon(type) {
+    const icons = {
+        'local': 'fas fa-hdd',
+        's3': 'fab fa-aws',
+        'gcp': 'fab fa-google',
+        'mega': 'fas fa-cloud',
+        'dropbox': 'fab fa-dropbox'
+    };
+    return icons[type] || 'fas fa-server';
+}
+
+function updateConfigExample(type) {
+    const examples = {
+        'local': '{"path": "storage/local"}',
+        's3': '{"bucket": "my-bucket", "region": "us-east-1"}',
+        'gcp': '{"bucket": "my-bucket", "project": "my-project"}',
+        'mega': '{"email": "your@email.com", "password": "yourpassword"}',
+        'dropbox': '{"access_token": "your_dropbox_access_token"}'
+    };
+    
+    const descriptions = {
+        'local': 'Specify the local directory path for file storage',
+        's3': 'Provide AWS S3 bucket name and region',
+        'gcp': 'Provide Google Cloud Storage bucket and project details',
+        'mega': 'Provide your Mega.io account credentials',
+        'dropbox': 'Provide your Dropbox app access token (get from https://www.dropbox.com/developers/apps)'
+    };
+    
+    document.getElementById('configTextarea').value = examples[type];
+    document.getElementById('configExample').innerHTML = `<small class="text-muted">${descriptions[type]}</small>`;
+}
+
+function browseBroker(brokerId, brokerName) {
+    window.location.href = `/browse?broker=${brokerId}&name=${encodeURIComponent(brokerName)}`;
+}
+
+function removeBroker(brokerId, brokerName) {
+    if (confirm(`Remove broker "${brokerName}"? This will not delete the actual files.`)) {
+        fetch('/remove_broker', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id: brokerId})
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                loadBrokers();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+}
+
+document.getElementById('brokerForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    
+    try {
+        const config = JSON.parse(formData.get('config'));
+        const data = {
+            name: formData.get('name'),
+            type: formData.get('type'),
+            config: config
+        };
+        
+        fetch('/add_broker', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message) {
+                bootstrap.Modal.getInstance(document.getElementById('brokerModal')).hide();
+                this.reset();
+                updateConfigExample('local');
+                loadBrokers();
+                // Show testing status for new broker after brief delay
+                setTimeout(() => {
+                    const cards = document.querySelectorAll('.card');
+                    const lastCard = cards[cards.length - 1];
+                    if (lastCard) {
+                        const statusBadge = lastCard.querySelector('.badge:last-child');
+                        if (statusBadge) {
+                            statusBadge.className = 'badge bg-warning';
+                            statusBadge.textContent = 'Testing...';
+                        }
+                    }
+                    setTimeout(() => loadBrokers(), 2000);
+                }, 100);
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    } catch (e) {
+        alert('Invalid JSON configuration. Please check your syntax.');
+        return;
+    }
+});
+
+function editBroker(brokerId) {
+    fetch(`/get_broker/${brokerId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            
+            document.getElementById('editBrokerId').value = brokerId;
+            document.getElementById('editBrokerName').value = data.name;
+            document.getElementById('editBrokerType').value = data.type;
+            document.getElementById('editBrokerConfig').value = JSON.stringify(data.config, null, 2);
+            
+            new bootstrap.Modal(document.getElementById('editBrokerModal')).show();
+        });
+}
+
+document.getElementById('editBrokerForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const brokerId = document.getElementById('editBrokerId').value;
+    const name = document.getElementById('editBrokerName').value;
+    const configText = document.getElementById('editBrokerConfig').value;
+    
+    let config;
+    try {
+        config = JSON.parse(configText);
+    } catch (e) {
+        alert('Invalid JSON configuration. Please check your syntax.');
+        return;
+    }
+    
+    // Show testing status immediately
+    loadBrokers();
+    setTimeout(() => {
+        const cards = document.querySelectorAll('.card');
+        cards.forEach(card => {
+            const editBtn = card.querySelector(`button[onclick*="editBroker(${brokerId})"]`);
+            if (editBtn) {
+                const statusBadge = card.querySelector('.badge:last-child');
+                if (statusBadge) {
+                    statusBadge.className = 'badge bg-warning';
+                    statusBadge.textContent = 'Testing...';
+                }
+            }
+        });
+    }, 100);
+    
+    fetch(`/edit_broker/${brokerId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            name: name,
+            config: config
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            bootstrap.Modal.getInstance(document.getElementById('editBrokerModal')).hide();
+            setTimeout(() => loadBrokers(), 2000);
+        } else {
+            alert('Error: ' + data.error);
+            loadBrokers();
+        }
+    })
+    .catch(error => {
+        alert('Network error: ' + error.message);
+        loadBrokers();
+    });
+});
+
+// Initialize
+updateConfigExample('local');
+loadBrokers();
+</script>
+{% endblock %}

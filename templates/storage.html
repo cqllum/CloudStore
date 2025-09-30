@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block page_title %}Storage Browser{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <p class="text-muted mb-0">Browse and manage files across storage providers</p>
+    </div>
+    <div>
+        <button class="btn btn-outline-secondary" onclick="loadBrokers()">
+            <i class="fas fa-sync-alt me-1"></i>Refresh
+        </button>
+    </div>
+</div>
+
+<div id="storageContent">
+    <div class="d-flex justify-content-center p-5">
+        <div class="spinner-border" role="status"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentBroker = null;
+let currentPath = '';
+
+function loadBrokers() {
+    // Get broker status from database
+    fetch('/broker_status')
+        .then(response => response.json())
+        .then(statusData => {
+            fetch('/brokers')
+                .then(response => response.json())
+                .then(brokers => {
+                    if (brokers.length === 0) {
+                        document.getElementById('storageContent').innerHTML = `
+                            <div class="text-center p-5">
+                                <i class="fas fa-server fa-4x text-muted mb-3"></i>
+                                <h5>No Storage Brokers</h5>
+                                <p class="text-muted">Add storage brokers to browse their contents</p>
+                                <a href="/manage" class="btn btn-primary">
+                                    <i class="fas fa-plus me-1"></i>Add Storage Broker
+                                </a>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    let html = '<div class="row g-4">';
+                    brokers.forEach(broker => {
+                        const isActive = statusData[broker.id];
+                        const getIcon = (type) => {
+                            switch(type) {
+                                case 'dropbox': return 'fab fa-dropbox';
+                                case 'mega': return 'fas fa-cloud';
+                                case 's3': return 'fab fa-aws';
+                                case 'gcp': return 'fab fa-google';
+                                case 'local': return 'fas fa-hdd';
+                                default: return 'fas fa-cloud';
+                            }
+                        };
+                        html += `<div class="col-md-4">
+                                    <div class="card h-100 broker-card" onclick="browseBroker(${broker.id}, '${broker.name}')">
+                                        <div class="card-body text-center">
+                                            <i class="${getIcon(broker.type)} fa-4x text-primary mb-3"></i>
+                                            <h5 class="card-title">${broker.name}</h5>
+                                            <span class="badge bg-secondary mb-2">${broker.type}</span><br>
+                                            <span class="badge ${isActive ? 'bg-success' : 'bg-danger'}">
+                                                ${isActive ? 'Active' : 'Inactive'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                 </div>`;
+                    });
+                    html += '</div>';
+                    document.getElementById('storageContent').innerHTML = html;
+                });
+        });
+}
+
+function browseBroker(brokerId, brokerName, path = '') {
+    currentBroker = {id: brokerId, name: brokerName};
+    currentPath = path;
+    
+    fetch(`/browse_storage/${brokerId}?path=${encodeURIComponent(path)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                return;
+            }
+            
+            let html = `<div class="d-flex justify-content-between align-items-center mb-4">
+                           <div>
+                               <h5 class="mb-1">${brokerName}</h5>
+                               <small class="text-muted">/${path}</small>
+                           </div>
+                           <div>
+                               ${path ? `<button class="btn btn-outline-secondary me-2" onclick="goUp()">
+                                   <i class="fas fa-level-up-alt me-1"></i>Up
+                               </button>` : ''}
+                               <button class="btn btn-secondary" onclick="loadBrokers()">
+                                   <i class="fas fa-arrow-left me-1"></i>Back to Brokers
+                               </button>
+                           </div>
+                       </div>`;
+            
+            html += '<div class="row g-3">';
+            data.contents.forEach(item => {
+                const itemPath = path + item.name + (item.type === 'folder' ? '/' : '');
+                const icon = item.type === 'folder' ? 'fas fa-folder fa-3x text-warning' : 'fas fa-file fa-3x text-muted';
+                const clickAction = item.type === 'folder' ? 
+                    `onclick="browseBroker(${brokerId}, '${brokerName}', '${itemPath}')"` : '';
+                
+                html += `<div class="col-md-3">
+                            <div class="card h-100 storage-item" ${clickAction} style="${item.type === 'folder' ? 'cursor:pointer;' : ''}">
+                                <div class="card-body text-center position-relative">
+                                    <i class="${icon} mb-2"></i>
+                                    <h6 class="card-title">${item.name}</h6>
+                                    <small class="text-muted">${formatBytes(item.size)}</small>
+                                    ${item.type === 'file' ? `
+                                        <button class="btn btn-danger btn-sm position-absolute top-0 end-0 m-2" 
+                                                onclick="event.stopPropagation(); deleteStorageFile('${item.name}')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                         </div>`;
+            });
+            html += '</div>';
+            
+            document.getElementById('storageContent').innerHTML = html;
+        });
+}
+
+function goUp() {
+    if (currentPath) {
+        const parentPath = currentPath.split('/').slice(0, -2).join('/') + 
+                          (currentPath.split('/').length > 2 ? '/' : '');
+        browseBroker(currentBroker.id, currentBroker.name, parentPath);
+    }
+}
+
+function deleteStorageFile(filename) {
+    if (confirm(`Delete "${filename}" from storage?`)) {
+        fetch(`/delete_storage_file/${currentBroker.id}`, {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: currentPath + filename})
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message || data.error);
+            browseBroker(currentBroker.id, currentBroker.name, currentPath);
+        });
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+loadBrokers();
+</script>
+
+<style>
+.broker-card, .storage-item {
+    transition: transform 0.2s;
+}
+.broker-card:hover, .storage-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.broker-card {
+    cursor: pointer;
+}
+</style>
+{% endblock %}
